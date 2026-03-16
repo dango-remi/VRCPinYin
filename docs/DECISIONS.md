@@ -8,13 +8,14 @@
 ## 目录
 
 1. [ADR-001: 使用 SteamVR Overlay 作为 UI 层](#adr-001-使用-steamvr-overlay-作为-ui-层)
-2. [ADR-002: 使用 WebSocket 进行 VR-PC 通信](#adr-002-使用-websocket-进行-vr-pc-通信)
+2. [ADR-002: 使用 WebSocket 进行 VR-PC 通信](#adr-002-使用-websocket-进行-vr-pc-通信)（已废弃）
 3. [ADR-003: 双模式文字输出（OSC + 剪贴板）](#adr-003-双模式文字输出osc--剪贴板)
-4. [ADR-004: PC 端使用 .NET 而非其他语言](#adr-004-pc-端使用-net-而非其他语言)
-5. [ADR-005: VR 端使用 Unity 2022.3 LTS](#adr-005-vr-端使用-unity-2023-lts)
-6. [ADR-006: WebSocket 端口选择 8765](#adr-006-websocket-端口选择-8765)
+4. [ADR-004: PC 端使用 .NET 而非其他语言](#adr-004-pc-端使用-net-而非其他语言)（已废弃）
+5. [ADR-005: VR 端使用 Unity 2022.3 LTS](#adr-005-vr-端使用-unity-20223-lts)
+6. [ADR-006: WebSocket 端口选择 8765](#adr-006-websocket-端口选择-8765)（已废弃）
 7. [ADR-007: 使用 Windows TSF 而非第三方拼音库](#adr-007-使用-windows-tsf-而非第三方拼音库)
 8. [ADR-008: OSC 库选择 OscCore](#adr-008-osc-库选择-osccore)
+9. [ADR-009: 单 exe 架构（TSF 在 Unity 进程内）](#adr-009-单-exe-架构tsf-在-unity-进程内)
 
 ---
 
@@ -50,8 +51,7 @@
 
 ### 后果
 
-- 需要开发一个独立的 Unity 应用
-- 用户需要同时运行 VRCPinYin Overlay 和 PC 端服务
+- 需要开发一个 Unity 应用（单 exe，见 ADR-009）
 - 需要处理 Overlay 与 VRChat 的层级关系
 
 ---
@@ -60,7 +60,7 @@
 
 ### 状态
 
-✅ 已接受
+❌ 已废弃（采用 ADR-009 单 exe 架构，不再需要进程间通信）
 
 ### 背景
 
@@ -92,7 +92,7 @@ VR 端（Overlay）和 PC 端（输入法服务）需要通信，需要选择合
 
 - PC 端需要运行一个 WebSocket 服务器
 - VR 端需要处理连接断开和重连
-- 需要定义消息格式（在 PROTOCOL.md 中）
+- （已废弃：当前为单 exe，无进程间协议，无需上述内容。）
 
 ### 技术选型
 
@@ -161,7 +161,7 @@ VR 端（Overlay）和 PC 端（输入法服务）需要通信，需要选择合
 
 ### 状态
 
-✅ 已接受
+❌ 已废弃（采用 ADR-009 单 exe 架构，无独立 PC 端程序）
 
 ### 背景
 
@@ -204,7 +204,7 @@ PC 端服务需要处理 WebSocket 通信、输入法交互、文字输出等功
 
 ### 背景
 
-VR 端需要开发一个 Unity 应用来实现 SteamVR Overlay。需要选择合适的 Unity 版本。
+需要开发一个 Unity 应用来实现 SteamVR Overlay（并承载输入法与输出，见 ADR-009）。需要选择合适的 Unity 版本。
 
 ### 考虑的方案
 
@@ -237,7 +237,7 @@ VR 端需要开发一个 Unity 应用来实现 SteamVR Overlay。需要选择合
 
 ### 状态
 
-✅ 已接受
+❌ 已废弃（单 exe 架构下无 WebSocket，见 ADR-009）
 
 ### 背景
 
@@ -290,7 +290,7 @@ PC 端 WebSocket 服务器需要监听一个端口。需要选择合适的端口
 
 ### 背景
 
-PC 端需要将拼音转换为候选词。需要决定使用系统输入法 API 还是第三方拼音库。
+需要将拼音转换为候选词。需要决定使用系统输入法 API 还是第三方拼音库。
 
 ### 考虑的方案
 
@@ -334,7 +334,7 @@ PC 端需要将拼音转换为候选词。需要决定使用系统输入法 API 
 
 ### 背景
 
-PC 端需要通过 OSC 协议发送消息到 VRChat。需要选择合适的 OSC 库。
+需要在 Unity 进程内通过 OSC 协议发送消息到 VRChat。需要选择合适的 OSC 库。
 
 ### 考虑的方案
 
@@ -377,6 +377,41 @@ client.Send("/chatbox/input", "你好", true, false);
 
 ---
 
+## ADR-009: 单 exe 架构（TSF 在 Unity 进程内）
+
+### 状态
+
+✅ 已接受
+
+### 背景
+
+早期方案为双进程：Unity Overlay + 独立 PC 端服务，通过 WebSocket 通信。用户反馈运行两个 exe 不可接受，且 TSF 可在 Unity 进程内通过 P/Invoke 或 C++ 插件调用，无需独立进程。
+
+### 考虑的方案
+
+| 方案 | 描述 | 优点 | 缺点 |
+|------|------|------|------|
+| **A. 单 Unity exe** | Overlay + TSF + OSC 均在 Unity 进程内 | 只运行一个程序；部署简单 | 需在 Unity 内封装 TSF 调用 |
+| **B. 双 exe（原方案）** | Overlay + 独立 PC 服务，WebSocket 通信 | 职责分离 | 用户需启动两个程序，不可接受 |
+| **C. 单 .NET exe 自绘 Overlay** | 用 OpenVR 自绘 Overlay，无 Unity | 单 exe | 开发量极大，不选 |
+
+### 决策
+
+选择 **方案 A：单 Unity exe**
+
+### 理由
+
+1. **用户体验**：只需启动一个 VRCPinYin 应用，无需再开“后台服务”
+2. **技术可行**：TSF 为 Windows API/COM，Unity 运行在同一 Windows 进程内，可通过 C# P/Invoke 或 C++ Native Plugin 调用
+3. **架构简化**：无 WebSocket、无进程间协议，模块间直接调用即可
+
+### 后果
+
+- 仅一个 Unity 工程，模块为 5 个：Overlay 框架、虚拟键盘、候选词面板、输入法引擎、文字输出
+- 输入法在 Unity 内通过 P/Invoke 或 C++ 插件调用 Windows TSF
+
+---
+
 ## 决策记录模板
 
 用于记录未来的技术决策：
@@ -415,6 +450,3 @@ client.Send("/chatbox/input", "你好", true, false);
 - [后果2]
 ```
 
----
-
-*本文档由 VRCPinYin 团队维护*
