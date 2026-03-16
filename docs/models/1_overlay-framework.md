@@ -231,14 +231,39 @@
 | 9 | ComputeIntersection 被调用：传入射线后出现 `ComputeIntersection 已调用, 结果 hit=true/false` 及必要时 point/uv/distance | ☐ |
 | 10 | FindOverlay 恢复（若发生）：ShowOverlay 返回 InvalidHandle/UnknownOverlay 时出现 `ShowOverlay 返回 ... 尝试 FindOverlay 恢复`，成功时出现 `FindOverlay 恢复成功, 新 handle=...` | ☐ |
 | 11 | 多实例（若发生）：场景中存在多个 OverlayManager 时，第二个出现 `OverlayManager 已存在，将销毁重复实例。` | ☐ |
+| 12 | （最小场景兜底）SteamVR Input 初始化：出现 `[VRCPinYin.验收] SteamVR_Input.Initialize(true) 已调用（最小场景兜底）` | ☐ |
+| 13 | （快捷键前置）Toggle ActionSet 已激活：出现 `[VRCPinYin.验收] toggleAction 已配置，已尝试 Activate ActionSet: ...` | ☐ |
+| 14 | （快捷键触发点）手柄按键被识别：出现 `[VRCPinYin.验收] 手柄 Toggle 触发：toggleAction.GetStateDown(Any)=true，将调用 Toggle()` | ☐ |
 
 **说明**：若某条在本次操作中未触发（例如未绑定 Toggle 则第 6 条无；无 handle 失效则第 10 条无；仅一个 Instance 则第 11 条无），可在该条标注「未触发」或「N/A」，其余条须在 Log 中有对应输出且含义/取值符合预期，方算 Log 验收通过。
 
 ### 9.5 验收结论
 
-- **人工观察**：9.3 中各观察项均符合描述，则观察部分通过。
-- **Log 验收**：9.4 清单中本次操作触发的条目均在 Log 中有对应输出且判定通过，则 Log 部分通过。
-- 两部分均通过即本模块验收完成。后续模块 2～5 完成后，按 [README 工作流程](../../README.md#工作流程) 做端到端总验收。
+- **本次验收的实际操作步骤记录**：
+  1. 启动 SteamVR，并连接头显/手柄设备。
+  2. 使用 Unity 打开场景 `Scenes/SampleScene`。
+  3. 在层级面板中启用 `SampleScene/验收/1_overlay-framework` 物体（确保 `OverlayManager` 生效）。
+  4. 点击 **Play** 进入运行模式，按 `GrabGrip` 触发显示/隐藏并观察 Log。
+- **人工观察**：本次测试中，Overlay 在头显中可见，且按手柄快捷键能显示/隐藏，观察部分通过。
+- **Log 验收（本次已验证通过）**：本次测试中，以下条目在 Log 中已出现且判定通过：
+  - **#1** Overlay 创建成功（`Overlay 创建成功, handle=...`）
+  - **#3** Show() 被调用（`Show() 已调用, IsVisible=true`）
+  - **#4** Hide() 被调用（`Hide() 已调用, IsVisible=false`）
+  - **#5** Toggle() 被调用（`Toggle() 已调用, 当前 IsVisible=... -> 将切换为 ...`）
+  - **#6** 手柄 Toggle 触发（出现手柄触发日志，且后续组合满足 Toggle + Show/Hide）
+  - **#12**（最小场景兜底）SteamVR Input 初始化（`SteamVR_Input.Initialize(true) 已调用（最小场景兜底）`）
+  - **#13** Toggle ActionSet 已激活（`已尝试 Activate ActionSet: ...`）
+  - **#14** 手柄按键被识别（`toggleAction.GetStateDown(Any)=true...`）
+- **Log 验收（本次未触发 / N/A）**：
+  - **#2** 创建失败分支：未触发（本次创建成功）
+  - **#10** FindOverlay 恢复：未触发（本次 handle 未失效）
+  - **#11** 多实例：未触发（场景中仅一个 OverlayManager）
+- **Log 验收（本次未测：操作成本较高）**：
+  - **#8** OnDisable / 销毁：本次未做 Stop Play 覆盖该分支
+  - **#9** ComputeIntersection：本次未编写/挂载测试脚本触发该接口
+  - **#7** 纹理未就绪分支：本次未刻意移除 Overlay Texture 来触发
+
+**结论**：本次已完成并通过“创建 + 快捷键显示/隐藏”的核心验收；其余未触发/未测条目可在后续补测时按 9.2 的操作步骤覆盖并在 9.4 清单中补勾选。后续模块 2～5 完成后，按 [README 工作流程](../../README.md#工作流程) 做端到端总验收。
 
 ---
 

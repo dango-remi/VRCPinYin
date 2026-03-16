@@ -63,6 +63,29 @@ namespace VRCPinYin.Overlay
                 return;
             }
 
+            // 最小场景可能没有 SteamVR_Behaviour（它负责每帧 SteamVR_Input.Update）；
+            // 这里做验收兜底，确保 Action 能收到输入。
+            try
+            {
+                SteamVR_Input.Initialize(true);
+                Debug.Log("[VRCPinYin.验收] SteamVR_Input.Initialize(true) 已调用（最小场景兜底）");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[VRCPinYin.验收] SteamVR_Input.Initialize 失败（将继续运行）: " + e.Message);
+            }
+
+            if (toggleAction == null)
+            {
+                Debug.LogWarning("[VRCPinYin.验收] 未指定 toggleAction，将无法通过手柄快捷键触发 Show/Hide（仍可通过代码调用 Show/Hide/Toggle 验收）。");
+            }
+            else if (toggleAction.actionSet != null)
+            {
+                // 某些配置下 ActionSet 可能未自动激活，导致 GetStateDown 永远为 false
+                toggleAction.actionSet.Activate(SteamVR_Input_Sources.Any, 0, false);
+                Debug.Log("[VRCPinYin.验收] toggleAction 已配置，已尝试 Activate ActionSet: " + toggleAction.actionSet.GetShortName());
+            }
+
             var err = OpenVR.Overlay.CreateOverlay(OverlayKey, OverlayName, ref _handle);
             if (err != EVROverlayError.None)
             {
@@ -98,8 +121,15 @@ namespace VRCPinYin.Overlay
         {
             if (_handle == OpenVR.k_ulOverlayHandleInvalid) return;
 
+            // 最小场景兜底：若没有 SteamVR_Behaviour，本帧手动驱动 SteamVR Input 更新。
+            // 有 SteamVR_Behaviour 时重复调用通常无害，验收期以可观测性为优先。
+            try { SteamVR_Input.Update(); } catch { /* ignore */ }
+
             if (toggleAction != null && toggleAction.GetStateDown(SteamVR_Input_Sources.Any))
+            {
+                Debug.Log("[VRCPinYin.验收] 手柄 Toggle 触发：toggleAction.GetStateDown(Any)=true，将调用 Toggle()");
                 Toggle();
+            }
 
             if (_visible)
                 UpdateOverlayTransformAndTexture();
