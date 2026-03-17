@@ -43,6 +43,13 @@ namespace VRCPinYin.Keyboard
         [Tooltip("是否显示射线光标")]
         public bool showCursor = true;
 
+        [Header("Ray Visual")]
+        [Tooltip("LineRenderer 组件（挂在 UI layer 的子物体上，由 OverlayCamera 渲染进 RenderTexture）")]
+        public LineRenderer pointerRay;
+
+        [Tooltip("是否显示手柄到光标的射线")]
+        public bool showRay = true;
+
         // ── 对外属性 ──
 
         public bool IsPointerActive { get; private set; }
@@ -121,13 +128,19 @@ namespace VRCPinYin.Keyboard
 
             if (!hit)
             {
+                UpdateRay(false, Vector3.zero, Vector3.zero);
                 if (IsPointerActive)
                     ClearPointerState();
                 return;
             }
 
+            // OpenVR UV (0,0) = 左上角；Unity Canvas (0,0) = 左下角 → 翻转 Y 轴
+            uv = new Vector2(uv.x, 1f - uv.y);
+
             IsPointerActive = true;
             CurrentUV = uv;
+
+            UpdateRay(true, worldPos, hitPoint);
 
             UpdateCursor(uv, true);
 
@@ -217,6 +230,21 @@ namespace VRCPinYin.Keyboard
             CurrentHoverTarget = null;
             IsPointerActive = false;
             UpdateCursor(Vector2.zero, false);
+            UpdateRay(false, Vector3.zero, Vector3.zero);
+        }
+
+        private void UpdateRay(bool visible, Vector3 from, Vector3 to)
+        {
+            if (pointerRay == null) return;
+
+            bool shouldShow = visible && showRay;
+            if (pointerRay.enabled != shouldShow)
+                pointerRay.enabled = shouldShow;
+
+            if (!shouldShow) return;
+
+            pointerRay.SetPosition(0, from);
+            pointerRay.SetPosition(1, to);
         }
 
         private void UpdateCursor(Vector2 uv, bool visible)

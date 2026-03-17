@@ -306,7 +306,22 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 4. 默认设为 **不激活**（取消勾选 GameObject 左上角的 Active 复选框），运行时由 VRPointerHandler 按需激活。
 5. 取消勾选 **Raycast Target**（Image 组件上），避免光标自身被 GraphicRaycaster 命中。
 
-#### 步骤 7：创建 VRPointerHandler
+#### 步骤 7：创建射线指示线（PointerRay）
+
+射线指示线帮助用户看清手柄朝向与面板的对应关系。它通过 `LineRenderer` 渲染，并挂在 **UI layer**，从而被 OverlayCamera 渲染进 RenderTexture，最终出现在 Overlay 面板上（从面板边缘延伸至光标圆点）。
+
+1. 在 **VRPointerHandler** GameObject 下右键 → **Create Empty**，重命名为 `PointerRay`。
+2. 选中 `PointerRay`，在 Inspector 中：
+   - **Layer**：改为 **UI**（使 OverlayCamera 能将其渲染进 RenderTexture）。
+   - 点击 **Add Component → Line Renderer**，配置：
+     - **Positions**：Count = 2（默认，运行时由脚本每帧赋值）。
+     - **Width**：起点约 `0.003`，终点约 `0.001`（略带锥形更自然；也可保持等宽 `0.002`）。
+     - **Material**：新建 Material，Shader 选 `Sprites/Default`（或 `Unlit/Color`），颜色设为白色或浅蓝色，Alpha 约 180。
+     - **Use World Space**：勾选（默认）。
+     - **Shadow Casting Mode**：Off；**Receive Shadows**：取消。
+3. 确认 **OverlayCamera** 的 **Culling Mask** 包含 **UI** layer（World Space Canvas 通常已包含，可在 Camera Inspector 检查）。
+
+#### 步骤 8：创建 VRPointerHandler
 
 1. 在 **OverlayRig** 下（与 OverlayCamera、OverlayCanvas 同级）创建空 GameObject，命名 `VRPointerHandler`。
 2. 添加 **VRPointerHandler** 脚本组件（`Assets/Scripts/Keyboard/VRPointerHandler.cs`）。
@@ -321,12 +336,14 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 | **Cursor Image** | 拖入步骤 6 创建的 `Cursor_Image` 的 RectTransform |
 | **Pointer Hand** | 选择 Right（默认）或按需改为 Left / Any |
 | **Show Cursor** | 勾选（默认 true） |
+| **Pointer Ray** | 拖入步骤 7 创建的 `PointerRay` 的 LineRenderer 组件 |
+| **Show Ray** | 勾选（默认 true） |
 
-#### 步骤 8：确保 EventSystem 存在
+#### 步骤 9：确保 EventSystem 存在
 
 场景中必须有一个 **EventSystem** 物体（模块 1 验收时通常已添加）。若没有：Hierarchy → 右键 → **UI → Event System**。
 
-#### 步骤 9：确保 OverlayCanvas 有 GraphicRaycaster
+#### 步骤 10：确保 OverlayCanvas 有 GraphicRaycaster
 
 选中 `OverlayCanvas`，确认 Inspector 中已有 **Graphic Raycaster** 组件。若没有，点击 **Add Component → Graphic Raycaster**。注意：World Space Canvas 默认自带此组件，通常无需手动添加。
 
@@ -336,7 +353,7 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 
 ```
 [OverlayRig]                                    // 模块 1
-├── [OverlayCamera]                             // 模块 1
+├── [OverlayCamera]                             // 模块 1（Culling Mask 需含 UI layer）
 ├── [OverlayCanvas]                             // 模块 1（需有 GraphicRaycaster）
 │   ├── (InputFieldRow)                         // 模块 3（暂可留空或占位）
 │   ├── (CandidatesRow)                         // 模块 3（暂可留空或占位）
@@ -347,6 +364,7 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 │   │   └── **Row_Bottom**                      // ★ Label_IMEName + 功能键
 │   └── **Cursor_Image**                        // ★ 新增，默认不激活
 ├── **VRPointerHandler**                        // ★ 新增，挂 VRPointerHandler 脚本
+│   └── **PointerRay**                          // ★ 新增，LineRenderer，Layer = UI
 ├── [OverlayManager]                            // 模块 1
 └── [EventSystem]                               // 已有
 ```
@@ -445,7 +463,7 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 1. **启动 SteamVR**：确保头显和至少一只手柄已连接。
 2. **运行场景**：Unity 中打开场景（如 `Scenes/SampleScene`），点击 **Play**。
 3. **显示 Overlay**：通过模块 1 的 Toggle（手柄快捷键或代码调用 `OverlayManager.Instance.Show()`）显示 Overlay。
-4. **射线指向键盘**：将配置的手柄（默认右手）指向 Overlay 键盘区域，观察射线光标出现及按键 hover 高亮。
+4. **射线指向键盘**：将配置的手柄（默认右手）指向 Overlay 键盘区域，观察射线指示线从面板边缘延伸至光标圆点、光标出现及按键 hover 高亮。
 5. **点击字母键**：扣下扳机，依次点击至少 3 个字母键（如 N、I、H），观察 pressed 反馈并检查 Log。
 6. **点击退格键**：点击退格键，观察反馈并检查 Log。
 7. **点击回车键**：点击回车键，观察反馈并检查 Log。
@@ -465,6 +483,7 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 - **观察**：Overlay 显示后，键盘布局为 QWERTY 排列，共 4 行（字母 ×3 + 功能行 ×1），含退格、回车、空格、中/英、发送、复制到剪贴板。
 - **观察**：射线指向按键时有 **hover 高亮**（颜色变化），移开后恢复。
 - **观察**：扣扳机点击按键时有 **pressed 反馈**（颜色变暗或其他视觉变化）。
+- **观察**：射线指示线（若开启）从 Overlay 面板边缘延伸至光标圆点，随手柄移动实时更新；射线移出 Overlay 后指示线消失。
 - **观察**：射线光标（若开启）跟随射线交点移动，位置与手柄指向一致；射线移出 Overlay 后光标隐藏。
 - **观察**：中/英切换按钮点击后，按钮文本在 "中" 和 "英" 间切换。
 - **观察**：底部显示输入法名称（占位文案或实际名称）。
