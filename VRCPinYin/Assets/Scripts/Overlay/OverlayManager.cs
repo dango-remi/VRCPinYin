@@ -44,6 +44,10 @@ namespace VRCPinYin.Overlay
         private Texture_t _textureData;
         private bool _textureDataValid;
 
+        // 首次显示时根据 HMD 当前姿态将 Overlay 放到用户正前方，之后在房间坐标系中固定。
+        private bool _hasFixedTransform;
+        private SteamVR_Utils.RigidTransform _fixedTransform;
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -152,23 +156,49 @@ namespace VRCPinYin.Overlay
                 Debug.Log("[VRCPinYin.验收] FindOverlay 恢复成功, 新 handle=" + _handle);
             }
 
-            SteamVR_Utils.RigidTransform t;
-            var vrcam = SteamVR_Render.Top();
-            if (vrcam != null && vrcam.origin != null)
+            // 第一次显示时：用当前 HMD 位姿 + distance 将 Overlay 放在用户正前方；
+            // 之后每帧直接使用该固定 Transform，从而在房间中保持不动。
+            if (!_hasFixedTransform)
             {
-                var offset = new SteamVR_Utils.RigidTransform(vrcam.origin, transform);
-                offset.pos.x /= vrcam.origin.localScale.x;
-                offset.pos.y /= vrcam.origin.localScale.y;
-                offset.pos.z /= vrcam.origin.localScale.z;
-                offset.pos.z += distance;
-                t = offset;
-            }
-            else
-            {
-                t = GetOverlayTransformFromHmd();
+                var compositor = OpenVR.Compositor;
+                if (compositor != null)
+                {
+                    var pose = new TrackedDevicePose_t();
+                    var gamePose = new TrackedDevicePose_t();
+                    if (compositor.GetLastPoseForTrackedDeviceIndex(OpenVR.k_unTrackedDeviceIndex_Hmd, ref pose, ref gamePose) == EVRCompositorError.None &&
+                        gamePose.bPoseIsValid)
+                    {
+                        var hmd = new SteamVR_Utils.RigidTransform(gamePose.mDeviceToAbsoluteTracking);
+                        var overlayPos = hmd.pos + hmd.rot * Vector3.forward * distance;
+                        var overlayRot = hmd.rot;
+                        _fixedTransform = new SteamVR_Utils.RigidTransform(overlayPos, overlayRot);
+                        _hasFixedTransform = true;
+                        Debug.Log("[VRCPinYin.验收] Overlay 初始位置已根据 HMD 放置在用户前方, distance=" + distance);
+                    }
+                }
+
+                if (!_hasFixedTransform)
+                {
+                    // 兜底：若获取 HMD 位姿失败，则使用场景中的 Transform
+                    var vrcam = SteamVR_Render.Top();
+                    if (vrcam != null && vrcam.origin != null)
+                    {
+                        var offset = new SteamVR_Utils.RigidTransform(vrcam.origin, transform);
+                        offset.pos.x /= vrcam.origin.localScale.x;
+                        offset.pos.y /= vrcam.origin.localScale.y;
+                        offset.pos.z /= vrcam.origin.localScale.z;
+                        _fixedTransform = offset;
+                    }
+                    else
+                    {
+                        _fixedTransform = new SteamVR_Utils.RigidTransform(transform);
+                    }
+                    _hasFixedTransform = true;
+                    Debug.Log("[VRCPinYin.验收] Overlay 初始位置使用场景 Transform，未能获取有效 HMD 位姿");
+                }
             }
 
-            var m = t.ToHmdMatrix34();
+            var m = _fixedTransform.ToHmdMatrix34();
             overlay.SetOverlayTransformAbsolute(_handle, SteamVR.settings.trackingSpace, ref m);
 
             if (_textureDataValid && overlayTexture != null)
@@ -177,26 +207,6 @@ namespace VRCPinYin.Overlay
                 overlay.SetOverlayTexture(_handle, ref _textureData);
             }
             overlay.SetOverlayAlpha(_handle, alpha);
-        }
-
-        private SteamVR_Utils.RigidTransform GetOverlayTransformFromHmd()
-        {
-            var compositor = OpenVR.Compositor;
-            if (compositor == null)
-                return new SteamVR_Utils.RigidTransform(transform);
-
-            var pose = new TrackedDevicePose_t();
-            var gamePose = new TrackedDevicePose_t();
-            if (compositor.GetLastPoseForTrackedDeviceIndex(OpenVR.k_unTrackedDeviceIndex_Hmd, ref pose, ref gamePose) != EVRCompositorError.None)
-                return new SteamVR_Utils.RigidTransform(transform);
-
-            if (!gamePose.bPoseIsValid)
-                return new SteamVR_Utils.RigidTransform(transform);
-
-            var hmd = new SteamVR_Utils.RigidTransform(gamePose.mDeviceToAbsoluteTracking);
-            var overlayPos = hmd.pos + hmd.rot * Vector3.forward * distance;
-            var overlayRot = hmd.rot;
-            return new SteamVR_Utils.RigidTransform(overlayPos, overlayRot);
         }
 
         public void Show()
@@ -208,6 +218,9 @@ namespace VRCPinYin.Overlay
                 Debug.Log("[VRCPinYin.验收] Show() 纹理未就绪，未执行 ShowOverlay");
                 return;
             }
+            // 每次显示前重置固定 Transform，使 Overlay 总是基于当前 HMD 姿态
+            // 放在用户正前方，并在本次显示周期内固定在房间坐标系中。
+            _hasFixedTransform = false;
             OpenVR.Overlay.ShowOverlay(_handle);
             _visible = true;
             Debug.Log("[VRCPinYin.验收] Show() 已调用, IsVisible=true");
@@ -251,12 +264,12 @@ namespace VRCPinYin.Overlay
             bool hit = OpenVR.Overlay.ComputeOverlayIntersection(_handle, ref input, ref output);
             if (!hit)
             {
-                Debug.Log("[VRCPinYin.验收] ComputeIntersection 已调用, 结果 hit=false");
+                //Debug.Log("[VRCPinYin.验收] ComputeIntersection 已调用, 结果 hit=false");
                 return false;
             }
             point = new Vector3(output.vPoint.v0, output.vPoint.v1, -output.vPoint.v2);
             uv = new Vector2(output.vUVs.v0, output.vUVs.v1);
-            Debug.Log("[VRCPinYin.验收] ComputeIntersection 已调用, 结果 hit=true, point=" + point + ", uv=" + uv);
+            //Debug.Log("[VRCPinYin.验收] ComputeIntersection 已调用, 结果 hit=true, point=" + point + ", uv=" + uv);
             return true;
         }
 

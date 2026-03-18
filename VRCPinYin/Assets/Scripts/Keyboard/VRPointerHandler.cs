@@ -43,13 +43,6 @@ namespace VRCPinYin.Keyboard
         [Tooltip("是否显示射线光标")]
         public bool showCursor = true;
 
-        [Header("Ray Visual")]
-        [Tooltip("LineRenderer 组件（挂在 UI layer 的子物体上，由 OverlayCamera 渲染进 RenderTexture）")]
-        public LineRenderer pointerRay;
-
-        [Tooltip("是否显示手柄到光标的射线")]
-        public bool showRay = true;
-
         // ── 对外属性 ──
 
         public bool IsPointerActive { get; private set; }
@@ -108,8 +101,16 @@ namespace VRCPinYin.Keyboard
 
             SteamVR_Input_Sources source = GetInputSource();
 
-            Vector3 pos = poseAction.GetLocalPosition(source);
-            Quaternion rot = poseAction.GetLocalRotation(source);
+            // 从控制器 Pose 获取位置与旋转，并转换到 Tracking/World 空间，
+            // 以匹配 Overlay 使用的 Tracking Space。
+            Vector3 localPos = poseAction.GetLocalPosition(source);
+            Quaternion localRot = poseAction.GetLocalRotation(source);
+
+            var vrcam = SteamVR_Render.Top();
+            Transform origin = vrcam != null ? vrcam.origin : null;
+
+            Vector3 pos = origin != null ? origin.TransformPoint(localPos) : localPos;
+            Quaternion rot = origin != null ? origin.rotation * localRot : localRot;
             Vector3 dir = rot * Vector3.forward;
 
             // ComputeIntersection 需要 tracking-space 坐标（内部处理 Unity↔OpenVR Z 翻转）
@@ -119,7 +120,7 @@ namespace VRCPinYin.Keyboard
 
             if (!hit)
             {
-                UpdateRay(false, Vector2.zero, Vector3.zero);
+                // 射线未命中 Overlay，清理指针状态
                 if (IsPointerActive)
                     ClearPointerState();
                 return;
@@ -131,21 +132,52 @@ namespace VRCPinYin.Keyboard
             IsPointerActive = true;
             CurrentUV = uv;
 
-            UpdateRay(true, uv, dir);
-
             UpdateCursor(uv, true);
 
-            RenderTexture rt = overlayMgr.overlayTexture;
-            if (rt == null) return;
+            // ── 将 UV 坐标正确转换为屏幕坐标 ──
+            Canvas canvas = graphicRaycaster.GetComponent<Canvas>();
+            if (canvas == null)
+            {
+                Debug.LogWarning("[VRCPinYin.验收] GraphicRaycaster 所在的 Canvas 为 null");
+                return;
+            }
 
-            Vector2 pixelPos = new Vector2(uv.x * rt.width, uv.y * rt.height);
-            _pointerData.position = pixelPos;
+            RectTransform canvasRect = canvas.GetComponent<RectTransform>();
+            Vector2 canvasSize = canvasRect.rect.size;
+
+            // UV (0,0) = 左下角 → Canvas 局部坐标（中心为原点）
+            Vector2 localPosCan = new Vector2(
+                (uv.x - 0.5f) * canvasSize.x,
+                (uv.y - 0.5f) * canvasSize.y
+            );
+
+            // Canvas 局部坐标 → 世界坐标
+            Vector3 worldPos = canvasRect.TransformPoint(localPosCan);
+
+            // 世界坐标 → overlayCamera 屏幕坐标
+            Vector2 screenPos = overlayCamera.WorldToScreenPoint(worldPos);
+            _pointerData.position = screenPos;
 
             _raycastResults.Clear();
             if (graphicRaycaster != null)
                 graphicRaycaster.Raycast(_pointerData, _raycastResults);
 
-            GameObject newTarget = _raycastResults.Count > 0 ? _raycastResults[0].gameObject : null;
+            // ── 调试日志：显示所有检测到的 UI 元素 ──
+            //if (_raycastResults.Count > 0)
+            //{
+            //    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            //    sb.AppendLine($"[VRCPinYin.验收] GraphicRaycast 检测到 {_raycastResults.Count} 个元素:");
+            //    for (int i = 0; i < _raycastResults.Count; i++)
+            //    {
+            //        var result = _raycastResults[i];
+            //        sb.AppendLine($"  [{i}] {result.gameObject.name} (Depth: {result.depth})");
+            //    }
+            //    Debug.Log(sb.ToString());
+            //}
+
+            // 获取检测到的第一个 GameObject，然后向上查找 Button 或 KeyButton
+            GameObject rawTarget = _raycastResults.Count > 0 ? _raycastResults[0].gameObject : null;
+            GameObject newTarget = FindClickableParent(rawTarget);
 
             // ── Hover 状态管理 ──
             if (newTarget != CurrentHoverTarget)
@@ -221,78 +253,6 @@ namespace VRCPinYin.Keyboard
             CurrentHoverTarget = null;
             IsPointerActive = false;
             UpdateCursor(Vector2.zero, false);
-            UpdateRay(false, Vector2.zero, Vector3.zero);
-        }
-
-        private void UpdateRay(bool visible, Vector2 uv, Vector3 trackingDir)
-        {
-            if (pointerRay == null) return;
-
-            bool shouldShow = visible && showRay;
-            if (pointerRay.enabled != shouldShow)
-                pointerRay.enabled = shouldShow;
-
-            if (!shouldShow) return;
-
-            RectTransform canvasRect = cursorImage != null ? cursorImage.parent as RectTransform : null;
-            if (canvasRect == null) return;
-
-            Vector2 canvasSize = canvasRect.rect.size;
-            float px = canvasRect.pivot.x;
-            float py = canvasRect.pivot.y;
-
-            // 终点 = 光标位置（Canvas 局部坐标 → 世界坐标）
-            float endX = uv.x * canvasSize.x - canvasSize.x * px;
-            float endY = uv.y * canvasSize.y - canvasSize.y * py;
-            Vector3 endWorld = canvasRect.TransformPoint(new Vector3(endX, endY, 0f));
-
-            // 将控制器方向投影到 Canvas 平面，得到射线在面板上的扫过方向
-            Vector3 worldDir = trackingDir;
-            var vrcam = SteamVR_Render.Top();
-            if (vrcam != null && vrcam.origin != null)
-                worldDir = vrcam.origin.TransformDirection(trackingDir);
-
-            Vector3 projected = Vector3.ProjectOnPlane(worldDir, canvasRect.forward);
-            Vector3 localProj = canvasRect.InverseTransformDirection(projected);
-
-            // 射线从反方向进入面板 → 从光标沿 entryDir 找到面板边缘作为起点
-            Vector2 entryDir = new Vector2(-localProj.x, -localProj.y);
-
-            Vector3 startWorld;
-            if (entryDir.sqrMagnitude > 0.0001f)
-            {
-                entryDir.Normalize();
-
-                float minX = -canvasSize.x * px;
-                float maxX = canvasSize.x * (1f - px);
-                float minY = -canvasSize.y * py;
-                float maxY = canvasSize.y * (1f - py);
-
-                float t = float.MaxValue;
-                if (Mathf.Abs(entryDir.x) > 0.001f)
-                {
-                    float tx = ((entryDir.x > 0 ? maxX : minX) - endX) / entryDir.x;
-                    if (tx > 0) t = Mathf.Min(t, tx);
-                }
-                if (Mathf.Abs(entryDir.y) > 0.001f)
-                {
-                    float ty = ((entryDir.y > 0 ? maxY : minY) - endY) / entryDir.y;
-                    if (ty > 0) t = Mathf.Min(t, ty);
-                }
-
-                if (t < float.MaxValue && t > 0)
-                    startWorld = canvasRect.TransformPoint(new Vector3(endX + entryDir.x * t, endY + entryDir.y * t, 0f));
-                else
-                    startWorld = endWorld;
-            }
-            else
-            {
-                // 控制器方向垂直于面板，回退到底部边缘中心
-                startWorld = canvasRect.TransformPoint(new Vector3(0f, -canvasSize.y * py, 0f));
-            }
-
-            pointerRay.SetPosition(0, startWorld);
-            pointerRay.SetPosition(1, endWorld);
         }
 
         private void UpdateCursor(Vector2 uv, bool visible)
@@ -318,6 +278,33 @@ namespace VRCPinYin.Keyboard
             float localX = uv.x * parentSize.x - parentSize.x * parentRect.pivot.x;
             float localY = uv.y * parentSize.y - parentSize.y * parentRect.pivot.y;
             cursorImage.localPosition = new Vector3(localX, localY, 0f);
+        }
+
+        /// <summary>
+        /// 从指定的 GameObject 开始，向上查找父物体中第一个包含 Button 或 KeyButton 组件的物体。
+        /// 如果找不到，返回原始 GameObject。
+        /// </summary>
+        private GameObject FindClickableParent(GameObject obj)
+        {
+            if (obj == null) return null;
+
+            Transform current = obj.transform;
+            while (current != null)
+            {
+                // 检查是否有 Button 组件
+                if (current.GetComponent<UnityEngine.UI.Button>() != null)
+                {
+                    return current.gameObject;
+                }
+                // 检查是否有 KeyButton 组件
+                if (current.GetComponent<KeyButton>() != null)
+                {
+                    return current.gameObject;
+                }
+                current = current.parent;
+            }
+            // 如果找不到可点击的父物体，返回原始对象
+            return obj;
         }
 
         private void OnDisable()

@@ -81,9 +81,9 @@
 
 ### 4.2 推荐参数
 
-- **距离**：例如 `distance = 1.0f`～`1.5f` 米（沿用户/头显前向）。可配置为参数。
-- **高度与朝向**：由「相对 SteamVR Camera origin 的偏移」或「相对 HMD 位姿的偏移」决定；通常 Overlay 在用户前方、与视线平齐或略低，平面朝向用户。若无 SteamVR Camera（纯 Overlay 场景），可从 OpenVR Compositor 获取 HMD 位姿，在头显前方放置 Overlay。
-- 使用 **SteamVR_Utils.RigidTransform** 或等价方式构造 `HmdMatrix34_t`，再调用 `SetOverlayTransformAbsolute(handle, SteamVR.settings.trackingSpace, ref t)`（与 SteamVR_Overlay 一致）。
+- **距离**：可在场景中通过 `OverlayRig` / `OverlayManager` 的 Transform 直接布置 Overlay 与用户的距离（推荐约 `1.0f`～`1.5f` 米）。
+- **高度与朝向**：由 Overlay 在场景中的世界空间位置与旋转决定；本实现使用 `SetOverlayTransformAbsolute` 将该 Transform 转换到 Tracking Universe，从而保证 Overlay **固定在房间中**，不会随头部移动。需要调整位置时，直接在 Unity 场景中移动/旋转 `OverlayRig` 即可。
+- 使用 **SteamVR_Utils.RigidTransform** 将 Unity Transform 转为 `HmdMatrix34_t`，再调用 `SetOverlayTransformAbsolute(handle, SteamVR.settings.trackingSpace, ref t)`（与 SteamVR_Overlay 一致）。
 
 ### 4.3 尺寸
 
@@ -162,7 +162,9 @@
 | **void Hide()** | 隐藏 Overlay |
 | **void Toggle()** | 切换显示/隐藏，并返回当前是否可见（可选） |
 | **bool ComputeIntersection(Vector3 source, Vector3 direction, out Vector3 point, out Vector2 uv)** | 给定射线（世界空间），计算与 Overlay 平面的交点及 UV，供模块 2 做按键/候选点击。可封装 OpenVR `ComputeOverlayIntersection`，坐标系与 SteamVR_Overlay 保持一致（注意 OpenVR 的 Z 翻转）。 |
+| **bool ComputeIntersection(Vector3 source, Vector3 direction, out Vector3 point, out Vector3 normal, out Vector2 uv, out float hitDistance)** | （可选）同上，额外返回交点法线和距离，便于模块 2 扩展使用（如根据距离调整射线光标大小）。 |
 | **ulong OverlayHandle** | （可选）暴露 handle，供需要直接调 OpenVR 的代码使用；默认不暴露亦可。 |
+
 
 ### 7.2 与模块 2、3 的协作
 

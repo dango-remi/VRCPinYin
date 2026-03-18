@@ -306,22 +306,7 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 4. 默认设为 **不激活**（取消勾选 GameObject 左上角的 Active 复选框），运行时由 VRPointerHandler 按需激活。
 5. 取消勾选 **Raycast Target**（Image 组件上），避免光标自身被 GraphicRaycaster 命中。
 
-#### 步骤 7：创建射线指示线（PointerRay）
-
-射线指示线帮助用户看清手柄朝向与面板的对应关系。它通过 `LineRenderer` 渲染，并挂在 **UI layer**，从而被 OverlayCamera 渲染进 RenderTexture，最终出现在 Overlay 面板上（从面板边缘延伸至光标圆点）。
-
-1. 在 **VRPointerHandler** GameObject 下右键 → **Create Empty**，重命名为 `PointerRay`。
-2. 选中 `PointerRay`，在 Inspector 中：
-   - **Layer**：改为 **UI**（使 OverlayCamera 能将其渲染进 RenderTexture）。
-   - 点击 **Add Component → Line Renderer**，配置：
-     - **Positions**：Count = 2（默认，运行时由脚本每帧赋值）。
-     - **Width**：起点约 `0.003`，终点约 `0.001`（略带锥形更自然；也可保持等宽 `0.002`）。
-     - **Material**：新建 Material，Shader 选 `Sprites/Default`（或 `Unlit/Color`），颜色设为白色或浅蓝色，Alpha 约 180。
-     - **Use World Space**：勾选（默认）。
-     - **Shadow Casting Mode**：Off；**Receive Shadows**：取消。
-3. 确认 **OverlayCamera** 的 **Culling Mask** 包含 **UI** layer（World Space Canvas 通常已包含，可在 Camera Inspector 检查）。
-
-#### 步骤 8：创建 VRPointerHandler
+#### 步骤 7：创建 VRPointerHandler
 
 1. 在 **OverlayRig** 下（与 OverlayCamera、OverlayCanvas 同级）创建空 GameObject，命名 `VRPointerHandler`。
 2. 添加 **VRPointerHandler** 脚本组件（`Assets/Scripts/Keyboard/VRPointerHandler.cs`）。
@@ -336,8 +321,6 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 | **Cursor Image** | 拖入步骤 6 创建的 `Cursor_Image` 的 RectTransform |
 | **Pointer Hand** | 选择 Right（默认）或按需改为 Left / Any |
 | **Show Cursor** | 勾选（默认 true） |
-| **Pointer Ray** | 拖入步骤 7 创建的 `PointerRay` 的 LineRenderer 组件 |
-| **Show Ray** | 勾选（默认 true） |
 
 #### 步骤 9：确保 EventSystem 存在
 
@@ -364,7 +347,6 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 │   │   └── **Row_Bottom**                      // ★ Label_IMEName + 功能键
 │   └── **Cursor_Image**                        // ★ 新增，默认不激活
 ├── **VRPointerHandler**                        // ★ 新增，挂 VRPointerHandler 脚本
-│   └── **PointerRay**                          // ★ 新增，LineRenderer，Layer = UI
 ├── [OverlayManager]                            // 模块 1
 └── [EventSystem]                               // 已有
 ```
@@ -519,6 +501,52 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 **说明**：若某条在本次操作中未触发（例如未配置 Action 则第 3 条触发、第 4–9 条无法触发；仅一个 Instance 则第 21 条无），可在该条标注「未触发」或「N/A」，其余条须在 Log 中有对应输出且含义/取值符合预期，方算 Log 验收通过。
 
 ### 9.5 验收结论（验收时由用户填写）
+
+- **本次验收的实际操作步骤记录**：
+  1. 启动 SteamVR，并连接头显/手柄设备。
+  2. 使用 Unity 打开场景 `Scenes/SampleScene`。
+  3. 在层级面板中启用 `SampleScene/验收/2_keyboard-ui` 物体（确保 `KeyboardManager` 和 `VRPointerHandler` 生效）。
+  4. 点击 **Play** 进入运行模式，按 `GrabGrip` 触发显示/隐藏键盘面板。
+  5. 将手柄指向键盘区域，观察射线光标出现，依次划过多个按键（J、I、U、Y、W、E、R、T、D、F、G、H、K、L 等）。
+  6. 点击字母键 H、K、L，点击回车键 Enter。
+
+- **人工观察**：本次测试中：
+  - 键盘面板按手柄快捷键能正确显示/隐藏。
+  - 面板在显示时始终出现在正前方并固定在虚拟空间中的固定位置。
+  - 射线光标可见，跟随手柄移动。
+  - 射线划过按键时，按键有高亮反馈（颜色变化）。
+  - 点击按键时，按键有 pressed 反馈（颜色改变）。
+  - 观察部分通过。
+
+- **Log 验收（本次已验证通过）**：本次测试中，以下条目在 Log 中已出现且判定通过：
+  - **#1** KeyboardManager 初始化完成（`KeyboardManager 初始化完成, 按键数量=31`）
+  - **#2** VRPointerHandler 初始化完成（`VRPointerHandler 初始化完成, poseAction=Pose, clickAction=GrabPinch`）
+  - **#6** PointerEnter：多次出现，如 `PointerEnter: Key_J`、`PointerEnter: Key_I`、`PointerEnter: Key_H` 等
+  - **#7** PointerExit：多次出现，如 `PointerExit: Key_J`、`PointerExit: Key_I`、`PointerExit: Key_H` 等
+  - **#8** PointerDown：出现 `PointerDown: Key_H`、`PointerDown: Key_K`、`PointerDown: Key_L`、`PointerDown: Key_Enter`
+  - **#9** PointerClick：出现 `PointerClick: Key_H`、`PointerClick: Key_K`、`PointerClick: Key_L`、`PointerClick: Key_Enter`
+  - **#10** 字母键事件分发：出现 `OnLetterKey 触发, char='h'`、`OnLetterKey 触发, char='k'`、`OnLetterKey 触发, char='l'`
+  - **#12** 回车键事件分发：出现 `OnEnter 触发`
+  - **#19** 射线未命中时 PointerExit：射线移出所有 UI 元素后出现 `PointerExit` 且不再出现 `PointerEnter`
+  - **#20** Overlay 隐藏时跳过处理：Overlay 隐藏后不再出现射线命中 Log
+
+- **Log 验收（本次未触发 / N/A）**：
+  - **#3** Pose/Click Action 未配置警告：未触发（本次配置正确）
+  - **#4** 射线命中 Overlay 日志：未触发（早期版本日志，后续已移除）
+  - **#5** GraphicRaycast 命中 UI 元素日志：未触发（调试日志，后续可移除）
+  - **#11** 退格键事件分发：未触发（本次未点击退格键）
+  - **#13** 空格键事件分发：未触发（本次未点击空格键）
+  - **#14** 中/英切换事件分发：未触发（本次未点击中/英按钮）
+  - **#15** 发送按钮事件分发：未触发（本次未点击发送按钮）
+  - **#16** 复制按钮事件分发：未触发（本次未点击复制按钮）
+  - **#17** UpdateIMELabel 被调用：未触发（本次未调用该接口）
+  - **#18** UpdateLangState 被调用：未触发（本次未调用该接口）
+  - **#21** 多实例：未触发（场景中仅一个 KeyboardManager）
+
+- **Log 验收（本次未测：操作成本较高）**：
+  - **#11** 退格键、**#13** 空格键、**#14** 中/英切换、**#15** 发送按钮、**#16** 复制按钮：本次未逐一测试所有按键，后续可按 9.2 操作步骤补测。
+
+**结论**：本次已完成并通过"键盘面板显示/隐藏 + 射线交互 + 字母键点击 + 回车键点击"的核心验收；其余未触发/未测条目可在后续补测时按 9.2 的操作步骤覆盖并在 9.4 清单中补勾选。模块 2 的核心功能（VR 指针交互、按键事件分发）已验证可用，可继续进行后续模块 3～5 的开发与验收。
 
 ---
 

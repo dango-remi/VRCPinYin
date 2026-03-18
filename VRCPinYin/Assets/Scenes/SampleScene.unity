@@ -6831,6 +6831,8 @@ MonoBehaviour:
   cursorImage: {fileID: 1115841414}
   pointerHand: 2
   showCursor: 1
+  pointerRay: {fileID: 0}
+  showRay: 1
 --- !u!1 &1527306770
 GameObject:
   m_ObjectHideFlags: 0
