@@ -112,23 +112,14 @@ namespace VRCPinYin.Keyboard
             Quaternion rot = poseAction.GetLocalRotation(source);
             Vector3 dir = rot * Vector3.forward;
 
-            // 坐标转换：SteamVR tracking space → Unity world（需与 OverlayManager 一致）
-            Vector3 worldPos = pos;
-            Vector3 worldDir = dir;
-            var vrcam = SteamVR_Render.Top();
-            if (vrcam != null && vrcam.origin != null)
-            {
-                worldPos = vrcam.origin.TransformPoint(pos);
-                worldDir = vrcam.origin.TransformDirection(dir);
-            }
-
+            // ComputeIntersection 需要 tracking-space 坐标（内部处理 Unity↔OpenVR Z 翻转）
             Vector3 hitPoint;
             Vector2 uv;
-            bool hit = overlayMgr.ComputeIntersection(worldPos, worldDir, out hitPoint, out uv);
+            bool hit = overlayMgr.ComputeIntersection(pos, dir, out hitPoint, out uv);
 
             if (!hit)
             {
-                UpdateRay(false, Vector3.zero, Vector3.zero);
+                UpdateRay(false, Vector2.zero, Vector3.zero);
                 if (IsPointerActive)
                     ClearPointerState();
                 return;
@@ -140,7 +131,7 @@ namespace VRCPinYin.Keyboard
             IsPointerActive = true;
             CurrentUV = uv;
 
-            UpdateRay(true, worldPos, hitPoint);
+            UpdateRay(true, uv, dir);
 
             UpdateCursor(uv, true);
 
@@ -230,10 +221,10 @@ namespace VRCPinYin.Keyboard
             CurrentHoverTarget = null;
             IsPointerActive = false;
             UpdateCursor(Vector2.zero, false);
-            UpdateRay(false, Vector3.zero, Vector3.zero);
+            UpdateRay(false, Vector2.zero, Vector3.zero);
         }
 
-        private void UpdateRay(bool visible, Vector3 from, Vector3 to)
+        private void UpdateRay(bool visible, Vector2 uv, Vector3 trackingDir)
         {
             if (pointerRay == null) return;
 
@@ -243,8 +234,65 @@ namespace VRCPinYin.Keyboard
 
             if (!shouldShow) return;
 
-            pointerRay.SetPosition(0, from);
-            pointerRay.SetPosition(1, to);
+            RectTransform canvasRect = cursorImage != null ? cursorImage.parent as RectTransform : null;
+            if (canvasRect == null) return;
+
+            Vector2 canvasSize = canvasRect.rect.size;
+            float px = canvasRect.pivot.x;
+            float py = canvasRect.pivot.y;
+
+            // 终点 = 光标位置（Canvas 局部坐标 → 世界坐标）
+            float endX = uv.x * canvasSize.x - canvasSize.x * px;
+            float endY = uv.y * canvasSize.y - canvasSize.y * py;
+            Vector3 endWorld = canvasRect.TransformPoint(new Vector3(endX, endY, 0f));
+
+            // 将控制器方向投影到 Canvas 平面，得到射线在面板上的扫过方向
+            Vector3 worldDir = trackingDir;
+            var vrcam = SteamVR_Render.Top();
+            if (vrcam != null && vrcam.origin != null)
+                worldDir = vrcam.origin.TransformDirection(trackingDir);
+
+            Vector3 projected = Vector3.ProjectOnPlane(worldDir, canvasRect.forward);
+            Vector3 localProj = canvasRect.InverseTransformDirection(projected);
+
+            // 射线从反方向进入面板 → 从光标沿 entryDir 找到面板边缘作为起点
+            Vector2 entryDir = new Vector2(-localProj.x, -localProj.y);
+
+            Vector3 startWorld;
+            if (entryDir.sqrMagnitude > 0.0001f)
+            {
+                entryDir.Normalize();
+
+                float minX = -canvasSize.x * px;
+                float maxX = canvasSize.x * (1f - px);
+                float minY = -canvasSize.y * py;
+                float maxY = canvasSize.y * (1f - py);
+
+                float t = float.MaxValue;
+                if (Mathf.Abs(entryDir.x) > 0.001f)
+                {
+                    float tx = ((entryDir.x > 0 ? maxX : minX) - endX) / entryDir.x;
+                    if (tx > 0) t = Mathf.Min(t, tx);
+                }
+                if (Mathf.Abs(entryDir.y) > 0.001f)
+                {
+                    float ty = ((entryDir.y > 0 ? maxY : minY) - endY) / entryDir.y;
+                    if (ty > 0) t = Mathf.Min(t, ty);
+                }
+
+                if (t < float.MaxValue && t > 0)
+                    startWorld = canvasRect.TransformPoint(new Vector3(endX + entryDir.x * t, endY + entryDir.y * t, 0f));
+                else
+                    startWorld = endWorld;
+            }
+            else
+            {
+                // 控制器方向垂直于面板，回退到底部边缘中心
+                startWorld = canvasRect.TransformPoint(new Vector3(0f, -canvasSize.y * py, 0f));
+            }
+
+            pointerRay.SetPosition(0, startWorld);
+            pointerRay.SetPosition(1, endWorld);
         }
 
         private void UpdateCursor(Vector2 uv, bool visible)
