@@ -79,8 +79,8 @@ Overlay 浮层大致布局
 
 | 模块 | 文档 | 说明 | 状态 |
 |------|------|------|------|
-| 1 | [1_overlay-framework.md](./docs/models/1_overlay-framework.md) | Overlay 框架 | 📝 待完成 |
-| 2 | [2_keyboard-ui.md](./docs/models/2_keyboard-ui.md) | 虚拟键盘 UI | 📝 待完成 |
+| 1 | [1_overlay-framework.md](./docs/models/1_overlay-framework.md) | Overlay 框架 | ✅ 已验收 |
+| 2 | [2_keyboard-ui.md](./docs/models/2_keyboard-ui.md) | 虚拟键盘 UI | ✅ 已验收 |
 | 3 | [3_candidates-panel.md](./docs/models/3_candidates-panel.md) | 候选词面板 | 📝 待完成 |
 | 4 | [4_ime-engine.md](./docs/models/4_ime-engine.md) | 输入法引擎（TSF） | 📝 待完成 |
 | 5 | [5_text-output.md](./docs/models/5_text-output.md) | 文字输出（OSC/剪贴板） | 📝 待完成 |
@@ -101,7 +101,7 @@ Overlay 浮层大致布局
 ```
 VRCPinYin/
 ├── README.md                    # 项目介绍
-├── .context.md                  # AI 协作说明
+├── .prompt.md                   # AI 协作说明
 ├── docs/                        # 文档
 │   ├── ARCHITECTURE.md          # 总体架构
 │   ├── DECISIONS.md             # 技术决策记录
@@ -134,7 +134,7 @@ VRCPinYin/
 
 ### P1 (重要功能)
 
-- [ ] 手柄快捷键唤起
+- [x] 手柄快捷键唤起
 - [ ] 输出模式切换
 
 ### P2 (增强功能)
@@ -149,11 +149,16 @@ VRCPinYin/
 
 ## 开发进度
 
-🚧 项目处于**设计阶段**
+🚧 项目处于**开发阶段**
 
 - ✅ 架构设计完成（单 exe）
-- 📝 模块详细设计进行中（models/）
-- ⬜ 开发阶段
+- ✅ 模块详细设计完成（models/）
+- 🔨 开发阶段进行中
+  - ✅ 模块 1（Overlay 框架）已验收
+  - ✅ 模块 2（虚拟键盘 UI）已验收
+  - ⬜ 模块 3（候选词面板）
+  - ⬜ 模块 4（输入法引擎）
+  - ⬜ 模块 5（文字输出）
 
 ## 许可证
 

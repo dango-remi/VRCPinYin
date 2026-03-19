@@ -84,15 +84,18 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 
 ### 2.2 控制器输入
 
-- **位姿（Pose）**：使用 `SteamVR_Action_Pose` 获取控制器在 Tracking Space 中的位置与朝向。射线起点为控制器位置，方向为控制器前向（`transform.forward`）。
+- **位姿（Pose）**：使用 `SteamVR_Action_Pose` 获取控制器在 **Local Space** 中的位置与朝向（`GetLocalPosition` / `GetLocalRotation`）。由于 Overlay 使用 Tracking Space 坐标系，需要通过 `SteamVR_Render.Top().origin` 将局部位姿转换到 Tracking/World 空间：`pos = origin.TransformPoint(localPos)`，`rot = origin.rotation * localRot`。射线起点为转换后的控制器位置，方向为 `rot * Vector3.forward`。
 - **点击（Click）**：使用 `SteamVR_Action_Boolean`（如 `InteractUI`）检测扳机按下。`GetStateDown` 为按下帧，`GetStateUp` 为松开帧，`GetState` 为持续按住。
 - **手柄选择**：默认使用**惯用手**控制器（可配置为 Right / Left / Any）。设为 Any 时，优先响应最近一次产生命中的手柄。
 
 ### 2.3 UV 到 Canvas 坐标映射
 
-- `ComputeIntersection` 返回的 UV 范围为 (0,0)–(1,1)，对应 Overlay 纹理的左下角到右上角。
-- 映射到 RenderTexture 像素坐标：`pixelX = uv.x × renderTexture.width`，`pixelY = uv.y × renderTexture.height`。
-- 将像素坐标赋值给 `PointerEventData.position`，搭配 OverlayCamera 作为事件相机，交由挂载在 OverlayCanvas 上的 `GraphicRaycaster` 做二维射线检测，即可命中 Canvas 上的 Button、Text 等 UI 元素。
+- `ComputeIntersection` 返回的 UV 范围为 (0,0)–(1,1)。**注意**：OpenVR UV 原点在**左上角**，而 Unity Canvas 原点在**左下角**，因此需要翻转 Y 轴：`uv.y = 1 - uv.y`。
+- 翻转后的 UV 经以下转换链映射到 `PointerEventData.position`，供 `GraphicRaycaster` 做二维射线检测：
+  1. **UV → Canvas 局部坐标**：`localX = (uv.x - 0.5) × canvasSize.x`，`localY = (uv.y - 0.5) × canvasSize.y`（Canvas RectTransform 中心为原点）。
+  2. **Canvas 局部坐标 → 世界坐标**：通过 `canvasRect.TransformPoint(localPos)` 转换。
+  3. **世界坐标 → 屏幕坐标**：通过 `overlayCamera.WorldToScreenPoint(worldPos)` 转换，得到的屏幕坐标赋值给 `PointerEventData.position`。
+- 搭配 OverlayCamera 作为事件相机，交由挂载在 OverlayCanvas 上的 `GraphicRaycaster` 做射线检测，即可命中 Canvas 上的 Button、Text 等 UI 元素。
 
 ### 2.4 Pointer 事件生命周期
 
@@ -109,7 +112,11 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 - 每帧仅处理一只手的射线（按 2.2 中的手柄选择策略）。
 - Overlay 不可见时（`OverlayManager.Instance.IsVisible == false`）跳过全部射线处理。
 
-### 2.5 射线未命中处理
+### 2.5 射线命中目标查找
+
+- `GraphicRaycaster` 返回的首个命中对象可能是按钮的子物体（如 Text），而非挂载 `Button` / `KeyButton` 的物体本身。为确保 Pointer 事件能正确驱动按键逻辑，实现中从命中对象开始**向上遍历父物体**，查找第一个包含 `Button` 或 `KeyButton` 组件的 GameObject 作为实际交互目标（`FindClickableParent`）。若未找到则使用原始命中对象。
+
+### 2.6 射线未命中处理
 
 - 射线未与 Overlay 相交（`ComputeIntersection` 返回 `false`），或相交后 `GraphicRaycaster` 未命中任何 UI 元素时：若当前有 hover 目标，发送 `PointerExit`；不执行任何按键操作。
 
@@ -479,8 +486,8 @@ GraphicRaycaster.Raycast → 命中 UI 元素
 | 1 | KeyboardManager 初始化：出现 `[VRCPinYin.验收] KeyboardManager 初始化完成, 按键数量=...` | ☐ |
 | 2 | VRPointerHandler 初始化：出现 `[VRCPinYin.验收] VRPointerHandler 初始化完成, poseAction=..., clickAction=...` | ☐ |
 | 3 | Pose/Click Action 未配置警告（若发生）：出现 `[VRCPinYin.验收] poseAction 或 clickAction 未配置，VR 指针将不可用` | ☐ |
-| 4 | 射线命中 Overlay：出现 `[VRCPinYin.验收] VRPointer 射线命中 Overlay, uv=(x, y)` | ☐ |
-| 5 | GraphicRaycast 命中 UI 元素：出现 `[VRCPinYin.验收] GraphicRaycast 命中: <按键名称>` | ☐ |
+| 4 | 射线命中 Overlay：出现 `[VRCPinYin.验收] VRPointer 射线命中 Overlay, uv=(x, y)`。**注意**：该日志默认已注释（因每帧调用量大），需验收时手动取消注释 | ☐ |
+| 5 | GraphicRaycast 命中 UI 元素：出现 `[VRCPinYin.验收] GraphicRaycast 命中: <按键名称>`。**注意**：该日志默认已注释（因每帧调用量大），需验收时手动取消注释 | ☐ |
 | 6 | PointerEnter：出现 `[VRCPinYin.验收] PointerEnter: <按键名称>` | ☐ |
 | 7 | PointerExit：出现 `[VRCPinYin.验收] PointerExit: <按键名称>` | ☐ |
 | 8 | PointerDown：出现 `[VRCPinYin.验收] PointerDown: <按键名称>` | ☐ |

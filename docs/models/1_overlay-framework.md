@@ -62,6 +62,7 @@
 - 使用 **SteamVR Input System**（SteamVR 2.x）：在 Unity 中创建或使用已有 Action，例如 Boolean 类型的 `OverlayToggle`，绑定到 Grip 或 A 键。
 - 在 Overlay 框架的 `Update` 中轮询该 Action：`if (OverlayToggle.GetStateDown(hand))` 则执行 **Toggle 显示/隐藏**（若当前可见则 Hide，否则 Show）。
 - 不依赖 Overlay 的「焦点」：只要应用在前台且 SteamVR 正常，即可收到输入。
+- **最小场景兜底**：若场景中没有 `SteamVR_Behaviour`（它负责每帧驱动 `SteamVR_Input.Update`），则在 `Start` 中调用 `SteamVR_Input.Initialize(true)` 初始化，并在 `Update` 中手动调用 `SteamVR_Input.Update()` 确保 Action 能收到输入。有 `SteamVR_Behaviour` 时重复调用通常无害。
 
 ### 3.3 防抖与冲突
 
@@ -81,9 +82,10 @@
 
 ### 4.2 推荐参数
 
-- **距离**：可在场景中通过 `OverlayRig` / `OverlayManager` 的 Transform 直接布置 Overlay 与用户的距离（推荐约 `1.0f`～`1.5f` 米）。
-- **高度与朝向**：由 Overlay 在场景中的世界空间位置与旋转决定；本实现使用 `SetOverlayTransformAbsolute` 将该 Transform 转换到 Tracking Universe，从而保证 Overlay **固定在房间中**，不会随头部移动。需要调整位置时，直接在 Unity 场景中移动/旋转 `OverlayRig` 即可。
-- 使用 **SteamVR_Utils.RigidTransform** 将 Unity Transform 转为 `HmdMatrix34_t`，再调用 `SetOverlayTransformAbsolute(handle, SteamVR.settings.trackingSpace, ref t)`（与 SteamVR_Overlay 一致）。
+- **距离**：通过 `OverlayManager.distance` 配置（推荐约 `1.0f`～`1.5f` 米）。
+- **动态定位**：每次调用 `Show()` 时，根据当前 **HMD 姿态**（通过 `Compositor.GetLastPoseForTrackedDeviceIndex` 获取）加上 `distance` 参数，将 Overlay 放在用户正前方；放置后在本次显示周期内以 `SetOverlayTransformAbsolute` **固定在房间坐标系中**，不会随头部移动。再次调用 `Show()` 时重新计算位置，使 Overlay 始终出现在用户当前朝向的正前方。
+- **Fallback**：若获取 HMD 姿态失败（如无头显），则回退到 `SteamVR_Render.Top().origin` 与 `OverlayRig` 的场景 Transform 计算位置。
+- 使用 **SteamVR_Utils.RigidTransform** 将位置与旋转转为 `HmdMatrix34_t`，再调用 `SetOverlayTransformAbsolute(handle, SteamVR.settings.trackingSpace, ref t)`（与 SteamVR_Overlay 一致）。
 
 ### 4.3 尺寸
 
@@ -230,7 +232,7 @@
 | 6 | 手柄 Toggle 触发：已绑定 Toggle Action 并按键时，Log 中先后出现 Toggle + Show 或 Toggle + Hide（即 5 与 3/4 组合） | ☐ |
 | 7 | 纹理未就绪时不执行 Show：未赋 Overlay Texture 时调用 Show()，出现 `Show() 纹理未就绪，未执行 ShowOverlay`；或 Start 时出现 `未指定 overlayTexture...` | ☐ |
 | 8 | OnDisable / 销毁：Stop Play 时出现 `OnDisable: DestroyOverlay 已调用, handle 已置为 Invalid` | ☐ |
-| 9 | ComputeIntersection 被调用：传入射线后出现 `ComputeIntersection 已调用, 结果 hit=true/false` 及必要时 point/uv/distance | ☐ |
+| 9 | ComputeIntersection 被调用：传入射线后出现 `ComputeIntersection 已调用, 结果 hit=true/false` 及必要时 point/uv/distance。**注意**：基础 4 参数重载的日志默认已注释（因每帧调用量大），需验收时手动取消注释；含 distance 的 6 参数重载日志默认启用 | ☐ |
 | 10 | FindOverlay 恢复（若发生）：ShowOverlay 返回 InvalidHandle/UnknownOverlay 时出现 `ShowOverlay 返回 ... 尝试 FindOverlay 恢复`，成功时出现 `FindOverlay 恢复成功, 新 handle=...` | ☐ |
 | 11 | 多实例（若发生）：场景中存在多个 OverlayManager 时，第二个出现 `OverlayManager 已存在，将销毁重复实例。` | ☐ |
 | 12 | （最小场景兜底）SteamVR Input 初始化：出现 `[VRCPinYin.验收] SteamVR_Input.Initialize(true) 已调用（最小场景兜底）` | ☐ |
